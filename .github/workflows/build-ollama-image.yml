@@ -1,0 +1,46 @@
+name: Build and Push Ollama Model Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        type: string
+        description: '模型名称（例如：qwen3:1.7b）'
+
+env:
+  IMAGE_NAME: ${{ secrets.IMAGE_NAME }}        # registry.cn-hangzhou.aliyuncs.com/mine/ollama
+  REGISTRY_USER: ${{ secrets.REGISTRY_USER }}  # 阿里云账号或 AccessKey ID
+  REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }}  # 阿里云 AccessKey Secret 或密码
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Qwen TAG
+        id: tag
+        run: |
+          # 替换模型名中的冒号为下划线
+          echo "TAG=${{ github.event.inputs.model_name//:/_ }}" >> $GITHUB_ENV
+
+      - name: Login to Alibaba Cloud Container Registry
+        run: |
+          docker login $IMAGE_NAME \
+            -u "$REGISTRY_USER" \
+            -p "$REGISTRY_PASS"
+
+      - name: Build Docker Image with Model
+        run: |
+          docker build \
+            --build-arg MODEL_NAME=${{ github.event.inputs.model_name }} \
+            -t $IMAGE_NAME:${{ env.TAG }} .
+
+      - name: Push Docker Image
+        run: |
+          docker push $IMAGE_NAME:${{ env.TAG }}
+
+      - name: Clean up
+        run: |
+          docker rmi $IMAGE_NAME:${{ env.TAG }} || true
