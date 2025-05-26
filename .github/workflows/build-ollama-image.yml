@@ -47,7 +47,7 @@ jobs:
       - name: Tag and push the new image
         run: |
           # 标记镜像
-          docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }}
+          docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}_${{ env.MODEL_NAME }}
 
           # 推送镜像到阿里云
           docker push ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }}
