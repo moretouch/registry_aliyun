@@ -12,38 +12,49 @@ env:
   IMAGE_NAME: ${{ secrets.IMAGE_NAME }}        # registry.cn-hangzhou.aliyuncs.com/mine/ollama
   REGISTRY_USER: ${{ secrets.REGISTRY_USER }} # 阿里云账号或 AccessKey ID
   REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }} # 阿里云 AccessKey Secret 或密码
+  MODEL_NAME: ${{ github.event.inputs.model_name }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # 1. 检出代码库（如果需要）
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Replace Colon in Model Name
-        id: tag
-        run: |
-          # 替换模型名中的冒号为下划线
-          MODEL_NAME=${{ github.event.inputs.model_name }}
-          TAG=${MODEL_NAME//:/_}
-          echo "TAG=$TAG" >> $GITHUB_ENV
+      # 2. 登录到阿里云容器镜像服务
+      - name: Login to Aliyun Container Registry
+        run: echo "${{ secrets.REGISTRY_PASS }}" | docker login registry.cn-hangzhou.aliyuncs.com -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
-      - name: Login to Alibaba Cloud Container Registry
+      # 3. 下载 Ollama 容器并运行模型
+      - name: Download Ollama and pull model
         run: |
-          echo "${{ secrets.REGISTRY_PASS }}" | docker login $IMAGE_NAME \
-            -u "${{ secrets.REGISTRY_USER }}" \
-            --password-stdin
+          # 拉取 ollama/ollama 镜像
+          docker pull ollama/ollama:latest
 
-      - name: Build Docker Image with Model
-        run: |
-          docker build \
-            --build-arg MODEL_NAME=${{ github.event.inputs.model_name }} \
-            -t $IMAGE_NAME:${{ env.TAG }} .
+          # 创建一个临时容器运行模型
+          docker run --rm -d --name ollama-container ollama/ollama:latest
+          docker exec ollama-container ollama pull ${{ env.MODEL_NAME }}
 
-      - name: Push Docker Image
+      # 4. 将运行好的容器重新打包为新的镜像
+      - name: Commit the container to a new image
         run: |
-          docker push $IMAGE_NAME:${{ env.TAG }}
+          # 提交容器为新的镜像
+          docker commit ollama-container ollama-with-model:latest
 
-      - name: Clean up
+      # 5. 标记新镜像并推送到阿里云镜像仓库
+      - name: Tag and push the new image
         run: |
-          docker rmi $IMAGE_NAME:${{ env.TAG }} || true
+          # 标记镜像
+          docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }}
+
+          # 推送镜像到阿里云
+          docker push ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }}
+
+      # 6. 清理
+      - name: Cleanup
+        run: |
+          docker rm -f ollama-container || true
+          docker rmi ollama-with-model:latest || true
+          docker rmi ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }} || true
