@@ -50,7 +50,7 @@ jobs:
           docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}_${{ env.MODEL_NAME }}
 
           # 推送镜像到阿里云
-          docker push ${{ env.IMAGE_NAME }}:${{ env.MODEL_NAME }}
+          docker push ${{ env.IMAGE_NAME }}_${{ env.MODEL_NAME }}
 
       # 6. 清理
       - name: Cleanup
