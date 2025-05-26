@@ -6,11 +6,12 @@ on:
       model_name:
         type: string
         description: '模型名称（例如：qwen3:1.7b）'
+        required: true
 
 env:
   IMAGE_NAME: ${{ secrets.IMAGE_NAME }}        # registry.cn-hangzhou.aliyuncs.com/mine/ollama
-  REGISTRY_USER: ${{ secrets.REGISTRY_USER }}  # 阿里云账号或 AccessKey ID
-  REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }}  # 阿里云 AccessKey Secret 或密码
+  REGISTRY_USER: ${{ secrets.REGISTRY_USER }} # 阿里云账号或 AccessKey ID
+  REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }} # 阿里云 AccessKey Secret 或密码
 
 jobs:
   build-and-push:
@@ -19,17 +20,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Qwen TAG
+      - name: Replace Colon in Model Name
         id: tag
         run: |
           # 替换模型名中的冒号为下划线
-          echo "TAG=${{ github.event.inputs.model_name//:/_ }}" >> $GITHUB_ENV
+          MODEL_NAME=${{ github.event.inputs.model_name }}
+          TAG=${MODEL_NAME//:/_}
+          echo "TAG=$TAG" >> $GITHUB_ENV
 
       - name: Login to Alibaba Cloud Container Registry
         run: |
-          docker login $IMAGE_NAME \
-            -u "$REGISTRY_USER" \
-            -p "$REGISTRY_PASS"
+          echo "${{ secrets.REGISTRY_PASS }}" | docker login $IMAGE_NAME \
+            -u "${{ secrets.REGISTRY_USER }}" \
+            --password-stdin
 
       - name: Build Docker Image with Model
         run: |
