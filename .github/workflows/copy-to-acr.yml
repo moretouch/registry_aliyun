@@ -1,0 +1,59 @@
+name: Copy Docker Image to Alibaba Cloud ACR
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_registry:
+        description: '源容器镜像地址 (如 kasmweb/nginx:1.26)'
+        required: true
+        type: string
+      target_registry:
+        description: '目标容器名称 (如 docker_hub:kasmweb_nginx_1.2.6)'
+        required: true
+        type: string
+      acr_region:
+        description: 'ACR 地区 (默认为 cn-hangzhou)'
+        required: false
+        default: 'cn-hangzhou'
+        type: string
+
+jobs:
+  copy-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository (optional, if needed for future enhancements)
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Log in to the source registry (Docker Hub or GitHub Container Registry)
+      - name: Log in to source registry
+        run: |
+          echo "${{ secrets.SOURCE_REGISTRY_PASS }}" | docker login -u "${{ secrets.SOURCE_REGISTRY_USER }}" --password-stdin
+        if: inputs.source_registry != ''
+
+      # Step 3: Pull the source image
+      - name: Pull source image
+        run: |
+          docker pull ${{ inputs.source_registry }}
+
+      # Step 4: Log in to Alibaba Cloud ACR
+      - name: Log in to Alibaba Cloud ACR
+        run: |
+          echo "${{ secrets.REGISTRY_PASS }}" | docker login --username "${{ secrets.REGISTRY_USER }}" --password-stdin registry.${{ inputs.acr_region }}.aliyuncs.com
+
+      # Step 5: Tag the source image for Alibaba Cloud ACR
+      - name: Tag source image for ACR
+        run: |
+          docker tag ${{ inputs.source_registry }} registry.${{ inputs.acr_region }}.aliyuncs.com/${{ secrets.REGISTRY_NAMESPACE }}/${{ inputs.target_registry }}
+
+      # Step 6: Push the image to Alibaba Cloud ACR
+      - name: Push image to Alibaba Cloud ACR
+        run: |
+          docker push registry.${{ inputs.acr_region }}.aliyuncs.com/${{ secrets.REGISTRY_NAMESPACE }}/${{ inputs.target_registry }}
+
+      # Step 7: Log out of all registries
+      - name: Log out of registries
+        run: |
+          docker logout
+          docker logout registry.${{ inputs.acr_region }}.aliyuncs.com
