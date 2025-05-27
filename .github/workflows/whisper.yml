@@ -6,7 +6,7 @@ on:
       target_register:
         description: 'Target image name'
         required: true
-        default: 'whisper-asr-webservice'
+        default: 'docker_hub:whisper-asr-webservice.small.faster_whisper'
       acr_region:
         description: 'ACR region'
         required: true
@@ -30,9 +30,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-
-    - name: Login to Docker Hub
-      run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
     - name: Pull whisper ASR image
       run: docker pull onerahmet/openai-whisper-asr-webservice:latest
