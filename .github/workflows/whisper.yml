@@ -40,9 +40,9 @@ jobs:
     - name: Run container and wait for model download
       run: |
         docker run -d --name whisper-asr \
-          -e ASR_MODEL=${{ github.event.inputs.asr_model }} \
-          -e ASR_ENGINE=${{ github.event.inputs.asr_engine }} \
-          -e ASR_DEVICE=${{ github.event.inputs.asr_device }} \
+          -e ASR_MODEL=${{ inputs.asr_model }} \
+          -e ASR_ENGINE=${{ inputs.asr_engine }} \
+          -e ASR_DEVICE=${{ inputs.asr_device }} \
           onerahmet/openai-whisper-asr-webservice:latest
         
         # Wait for container to be healthy (or at least running)
@@ -61,18 +61,18 @@ jobs:
     - name: Commit changes to new image
       run: |
         docker commit \
-          --change "ENV ASR_MODEL=${{ github.event.inputs.asr_model }}" \
-          --change "ENV ASR_ENGINE=${{ github.event.inputs.asr_engine }}" \
-          --change "ENV ASR_DEVICE=${{ github.event.inputs.asr_device }}" \
+          --change "ENV ASR_MODEL=${{ inputs.asr_model }}" \
+          --change "ENV ASR_ENGINE=${{ inputs.asr_engine }}" \
+          --change "ENV ASR_DEVICE=${{ inputs.asr_device }}" \
           whisper-asr whisper-asr-local
 
     - name: Login to Alibaba Cloud ACR
       run: |
-        docker login --username=${{ secrets.REGISTRY_USER }} --password=${{ secrets.REGISTRY_PASS }} registry.${{ github.event.inputs.acr_region }}.aliyuncs.com
+        echo "${{ secrets.REGISTRY_PASS }}" | docker login --username "${{ secrets.REGISTRY_USER }}" --password-stdin registry.${{ inputs.acr_region }}.aliyuncs.com
 
     - name: Tag and push to ACR
       run: |
-        target_tag="registry.${{ github.event.inputs.acr_region }}.aliyuncs.com/${{ secrets.REGISTRY_NAMESPACE }}/${{ github.event.inputs.target_register }}"
+        target_tag="registry.${{ inputs.acr_region }}.aliyuncs.com/${{ secrets.REGISTRY_NAMESPACE }}/${{ inputs.target_register }}"
         docker tag whisper-asr-local $target_tag
         docker push $target_tag
         echo "Pushed image to: $target_tag"
