@@ -19,10 +19,6 @@ on:
         description: 'ASR engine'
         required: true
         default: 'faster_whisper'
-      asr_device:
-        description: 'ASR device'
-        required: true
-        default: 'cuda'
 
 jobs:
   build-and-push:
@@ -39,7 +35,6 @@ jobs:
         docker run -d --name whisper-asr \
           -e ASR_MODEL=${{ inputs.asr_model }} \
           -e ASR_ENGINE=${{ inputs.asr_engine }} \
-          -e ASR_DEVICE=${{ inputs.asr_device }} \
           onerahmet/openai-whisper-asr-webservice:latest
         
         # Wait for container to be healthy (or at least running)
@@ -60,7 +55,6 @@ jobs:
         docker commit \
           --change "ENV ASR_MODEL=${{ inputs.asr_model }}" \
           --change "ENV ASR_ENGINE=${{ inputs.asr_engine }}" \
-          --change "ENV ASR_DEVICE=${{ inputs.asr_device }}" \
           whisper-asr whisper-asr-local
 
     - name: Login to Alibaba Cloud ACR
