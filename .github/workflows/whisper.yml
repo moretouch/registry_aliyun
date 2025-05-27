@@ -1,0 +1,84 @@
+name: Build and Push Whisper ASR to ACR
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_register:
+        description: 'Target image name'
+        required: true
+        default: 'whisper-asr-webservice'
+      acr_region:
+        description: 'ACR region'
+        required: true
+        default: 'cn-hangzhou'
+      asr_model:
+        description: 'ASR model size'
+        required: true
+        default: 'small'
+      asr_engine:
+        description: 'ASR engine'
+        required: true
+        default: 'faster_whisper'
+      asr_device:
+        description: 'ASR device'
+        required: true
+        default: 'cuda'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Login to Docker Hub
+      run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+    - name: Pull whisper ASR image
+      run: docker pull onerahmet/openai-whisper-asr-webservice:latest
+
+    - name: Run container and wait for model download
+      run: |
+        docker run -d --name whisper-asr \
+          -e ASR_MODEL=${{ github.event.inputs.asr_model }} \
+          -e ASR_ENGINE=${{ github.event.inputs.asr_engine }} \
+          -e ASR_DEVICE=${{ github.event.inputs.asr_device }} \
+          onerahmet/openai-whisper-asr-webservice:latest
+        
+        # Wait for container to be healthy (or at least running)
+        echo "Waiting for container to initialize and download models..."
+        sleep 60
+        
+        # Check if container is still running
+        if [ "$(docker inspect -f '{{.State.Running}}' whisper-asr)" = "true" ]; then
+          echo "Container is running, assuming model download completed."
+        else
+          echo "Container is not running, check logs for errors."
+          docker logs whisper-asr
+          exit 1
+        fi
+
+    - name: Commit changes to new image
+      run: |
+        docker commit \
+          --change "ENV ASR_MODEL=${{ github.event.inputs.asr_model }}" \
+          --change "ENV ASR_ENGINE=${{ github.event.inputs.asr_engine }}" \
+          --change "ENV ASR_DEVICE=${{ github.event.inputs.asr_device }}" \
+          whisper-asr whisper-asr-local
+
+    - name: Login to Alibaba Cloud ACR
+      run: |
+        docker login --username=${{ secrets.REGISTRY_USER }} --password=${{ secrets.REGISTRY_PASS }} registry.${{ github.event.inputs.acr_region }}.aliyuncs.com
+
+    - name: Tag and push to ACR
+      run: |
+        target_tag="registry.${{ github.event.inputs.acr_region }}.aliyuncs.com/${{ secrets.REGISTRY_NAMESPACE }}/${{ github.event.inputs.target_register }}"
+        docker tag whisper-asr-local $target_tag
+        docker push $target_tag
+        echo "Pushed image to: $target_tag"
+
+    - name: Clean up
+      run: |
+        docker stop whisper-asr || true
+        docker rm whisper-asr || true
+        docker rmi whisper-asr-local || true
