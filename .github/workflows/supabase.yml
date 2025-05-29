@@ -1,0 +1,60 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    - cron: '17 4 * * *'  # 每天 UTC 时间运行
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URLS: ${{ secrets.SUPABASE_URLS }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install PostgreSQL client
+        run: npm install pg
+
+      - name: Create keep-alive script
+        run: |
+          cat > keep-alive.js << 'EOL'
+          const { Client } = require('pg');
+          const { exec } = require('child_process');
+
+          async function keepAlive() {
+            const urls = process.env.SUPABASE_URLS.split(/\r?\n/).filter(url => url.trim() !== '');
+
+            for (let i = 0; i < urls.length; i++) {
+              const connString = urls[i];
+
+              const client = new Client({
+                connectionString: connString,
+              });
+
+              try {
+                await client.connect();
+                console.log(\`Connected to database \${i + 1}\`);
+
+                const res = await client.query('SELECT 1');
+                console.log(\`Query result for \${i + 1}: \`, res.rows);
+
+                await client.end();
+                console.log(\`Connection to \${i + 1} closed.\`);
+              } catch (err) {
+                console.error(\`Error connecting to database \${i + 1}: \`, err.message);
+              }
+            }
+          }
+
+          keepAlive();
+          EOL
+
+      - name: Run keep-alive script
+        run: node keep-alive.js
