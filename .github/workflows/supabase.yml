@@ -40,15 +40,11 @@ jobs:
 
               try {
                 await client.connect();
-                console.log(\`Connected to database \${i + 1}\`);
 
-                const res = await client.query('SELECT 1');
-                console.log(\`Query result for \${i + 1}: \`, res.rows);
+                const res = await client.query('SELECT COUNT(1) FROM auth.users');
 
                 await client.end();
-                console.log(\`Connection to \${i + 1} closed.\`);
               } catch (err) {
-                console.error(\`Error connecting to database \${i + 1}: \`, err.message);
               }
             }
           }
