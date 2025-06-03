@@ -46,11 +46,14 @@ jobs:
       # 5. 标记新镜像并推送到阿里云镜像仓库
       - name: Tag and push the new image
         run: |
+          MODEL_NAME_CLEANED="${{ env.MODEL_NAME }}"
+          MODEL_NAME_CLEANED="${MODEL_NAME_CLEANED//:/_}"   # 替换所有冒号为下划线
+          MODEL_NAME_CLEANED="${MODEL_NAME_CLEANED//\//-}"
           # 标记镜像
-          docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}_${{ env.MODEL_NAME }}
+          docker tag ollama-with-model:latest ${{ env.IMAGE_NAME }}_qwen3:${MODEL_NAME_CLEANED}
 
           # 推送镜像到阿里云
-          docker push ${{ env.IMAGE_NAME }}_${{ env.MODEL_NAME }}
+          docker push ${{ env.IMAGE_NAME }}_qwen3:${MODEL_NAME_CLEANED}
 
       # 6. 清理
       - name: Cleanup
