@@ -41,8 +41,8 @@ jobs:
               try {
                 await client.connect();
 
-                const res = await client.query('SELECT COUNT(1) FROM auth.users');
-
+                const res = await client.query('SELECT COUNT(1) _count FROM auth.users');
+                console.log('all ' + res[0]._count + ' users;')
                 await client.end();
               } catch (err) {
               }
