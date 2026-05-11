@@ -1,0 +1,40 @@
+name: Batch Sync Images to Alibaba Cloud ACR
+
+on:
+  schedule:
+    # 每天 UTC 2:00 定时执行，可按需修改
+    - cron: '47 2 * * *'
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: '镜像映射配置文件路径'
+        required: false
+        default: 'images.yaml'
+
+env:
+  ACR_REGION_DEFAULT: cn-hangzhou
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run sync script
+        env:
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }}
+          # SOURCE_REGISTRY_USER: ${{ secrets.SOURCE_REGISTRY_USER }}
+          # SOURCE_REGISTRY_PASS: ${{ secrets.SOURCE_REGISTRY_PASS }}
+        run: |
+          python scripts/sync_images.py "${{ inputs.config_file || 'images.yaml' }}"
