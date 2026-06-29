@@ -26,11 +26,20 @@ def get_digest(image: str, registry: str = "", user: str = "", password: str = "
     res = run(cmd)
     if res.returncode != 0:
         # 尝试捕获常见错误，如未登录或不存在
+        print(res.stderr, file=sys.stderr)
         return None
+    _backup = None
     for line in res.stdout.splitlines():
         if line.startswith('Digest:'):
             return line.split('Digest:')[1].strip()
-    return None
+        # 匹配如果有一个64位的16进制字符
+        if _backup is None:
+            _match = re.search('[0-9a-f]{64}', line)
+            if _match:
+                _backup = _match.group()
+                print(f"匹配到: {_backup}")
+    return _backup
+
 
 def main(config_file: str):
     # 读取 YAML 配置
