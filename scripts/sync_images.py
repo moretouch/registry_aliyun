@@ -26,7 +26,7 @@ def get_digest(image: str, registry: str = "", user: str = "", password: str = "
     res = run(cmd)
     if res.returncode != 0:
         # 尝试捕获常见错误，如未登录或不存在
-        print('error', file=sys.stderr)
+        print(f"error get digest: {image}\n{res.stderr}")
         return None
     _backup = None
     for line in res.stdout.splitlines():
