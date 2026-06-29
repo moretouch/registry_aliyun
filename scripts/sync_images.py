@@ -2,6 +2,7 @@
 """批量同步公开/私有镜像到阿里云 ACR，自动跳过未变化的镜像。"""
 import sys
 import os
+import re
 import subprocess
 import json
 import yaml
