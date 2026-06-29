@@ -8,3 +8,6 @@ images:
 
   - source: mattermost/mattermost-team-edition:release-11
     target: docker_hub:mattermost-team-edition
+
+  - source: unsloth/unsloth
+    target: docker_hub:unsloth
