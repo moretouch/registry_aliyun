@@ -2,9 +2,8 @@
 """批量同步公开/私有镜像到阿里云 ACR，自动跳过未变化的镜像。"""
 import sys
 import os
-import re
 import subprocess
-import json
+import re
 import yaml
 
 def run(cmd: str, check: bool = False) -> subprocess.CompletedProcess:
@@ -27,20 +26,19 @@ def get_digest(image: str, registry: str = "", user: str = "", password: str = "
     res = run(cmd)
     if res.returncode != 0:
         # 尝试捕获常见错误，如未登录或不存在
-        print(res.stderr, file=sys.stderr)
+        print('error', file=sys.stderr)
         return None
     _backup = None
     for line in res.stdout.splitlines():
         if line.startswith('Digest:'):
             return line.split('Digest:')[1].strip()
         # 匹配如果有一个64位的16进制字符
-        if _backup is None:
+        if _backup is None and line:
             _match = re.search('[0-9a-f]{64}', line)
             if _match:
                 _backup = _match.group()
                 print(f"匹配到: {_backup}")
     return _backup
-
 
 def main(config_file: str):
     # 读取 YAML 配置
