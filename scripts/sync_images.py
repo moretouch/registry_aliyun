@@ -58,7 +58,14 @@ def get_digest(image: str) -> str:
                 dlog(f"备用匹配 -> {_backup}")
     dlog(f"最终返回(digest={_backup})")
     return _backup
-
+    
+def get_mediatype(image: str):
+    r = run(f"docker buildx imagetools inspect {image}", debug=False)
+    for line in r.stdout.splitlines():
+        if line.startswith("MediaType:"):
+            return line.split("MediaType:", 1)[1].strip()
+    return None
+    
 def main(config_file: str):
     with open(config_file, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
