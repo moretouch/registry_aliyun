@@ -102,76 +102,44 @@ def main(config_file: str):
         source = item['source']
         target = item['target']
         region = item.get('region', default_region)
-
-        if not source or not target:
-            print(f"跳过无效条目: {item}")
-            continue
-
+    
         print(f"\n--- 处理 {source} -> {target} (区域: {region}) ---")
-
-        # 1) 源 digest
+    
         src_digest = get_digest(source)
-        if not src_digest and source_user and source_pass:
-            dlog("源 digest 为空，凭据已登录，重试一次")
-            src_digest = get_digest(source)
         if not src_digest:
-            print(f"\033[31m无法获取源镜像 digest: {source}\033[0m")
+            print(f"\033[31m无法获取源 digest: {source}\033[0m")
             fail_list.append(source)
             continue
-
-        # 2) 目标 digest
+    
         login_acr(region)
         target_full = f"registry.{region}.aliyuncs.com/{namespace}/{target}"
         dst_digest = get_digest(target_full)
-
-        # ==== 关键 debug：把两端 digest 明明白白打出来 ====
-        print(f"\033[35m[COMPARE]\033[0m")
-        print(f"    source       : {source}")
-        print(f"    source digest: {src_digest}")
-        print(f"    target       : {target_full}")
-        print(f"    target digest: {dst_digest}")
-        print(f"    equal        : {src_digest == dst_digest}")
-        # ================================================
-
-        if dst_digest and dst_digest == src_digest:
-            print(f"\033[32m镜像未变化，跳过同步: {source}\033[0m")
+    
+        print(f"  source digest: {src_digest}")
+        print(f"  target digest: {dst_digest}")
+        print(f"  media source : {get_mediatype(source)}")
+        print(f"  media target : {get_mediatype(target_full)}")
+    
+        if dst_digest == src_digest:
+            print(f"\033[32m镜像未变化，跳过同步\033[0m")
             skipped += 1
             continue
-
-        # 3) 拉取源镜像
-        r = run(f"docker pull {source}")
+    
+        # 关键改动：用 imagetools create 代替 pull/tag/push
+        r = run(f"docker buildx imagetools create --tag {target_full} {source}")
         if r.returncode != 0:
-            print(f"\033[31m拉取失败: {source}\033[0m\n{r.stderr}")
+            print(f"\033[31m同步失败: {source} -> {target_full}\033[0m\n{r.stderr}")
             fail_list.append(source)
             continue
-
-        # 4) 打标签并推送
-        r = run(f"docker tag {source} {target_full}")
-        if r.returncode != 0:
-            print(f"\033[31m打标签失败: {source}\033[0m\n{r.stderr}")
-            fail_list.append(source)
-            continue
-
-        r = run(f"docker push {target_full}")
-        if r.returncode != 0:
-            print(f"\033[31m推送失败: {target_full}\033[0m\n{r.stderr}")
-            fail_list.append(source)
-            continue
-
-        # ==== 推送后再 inspect 一次目标，验证 digest 是否与源一致 ====
-        if DEBUG:
-            pushed_digest = get_digest(target_full)
-            print(f"\033[35m[POST-PUSH]\033[0m target digest after push: {pushed_digest}")
-            if pushed_digest and pushed_digest != src_digest:
-                print(f"\033[33m[NOTE]\033[0m 推送后 digest 与源不一致 "
-                      f"(src={src_digest}, dst={pushed_digest})，"
-                      f"下次运行仍会重复同步！建议改用 "
-                      f"`docker buildx imagetools create --tag {target_full} {source}`")
-        # ============================================================
-
-        print(f"\033[32m[OK] 同步成功: {source} -> {target_full}\033[0m")
+    
+        # 验证
+        new_digest = get_digest(target_full)
+        print(f"\033[32m[OK] {source} -> {target_full}\033[0m")
+        print(f"  new target digest: {new_digest}")
+        if new_digest != src_digest:
+            print(f"\033[33m[WARN] 同步后 digest 仍不一致，请检查 ACR 是否支持 OCI index\033[0m")
         success += 1
-
+    
     run("docker logout", check=False)
 
     print(f"\n===== 同步报告 =====")
