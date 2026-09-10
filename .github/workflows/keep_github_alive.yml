@@ -1,0 +1,41 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '17 4 1,15 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push keepalive commit to orphan branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+      
+          git init -b keepalive
+          git config user.name  "github-actions[bot]"
+          git config user.email "112377345+moretouch@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+      
+          # 尝试拉取已有 keepalive 分支；不存在就跳过
+          if git fetch --depth=1 origin keepalive 2>/dev/null; then
+            # 用远端提交做基线，保证后续是快进
+            git reset --soft FETCH_HEAD
+            git checkout -- . 2>/dev/null || true
+          fi
+      
+          date -u +"%Y-%m-%dT%H:%M:%SZ" >> KEEPALIVE
+          git add KEEPALIVE
+          git commit -m "chore(keepalive): $(date -u +%Y-%m-%d) [skip ci]"
+      
+          git push origin keepalive
