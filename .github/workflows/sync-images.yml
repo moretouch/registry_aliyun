@@ -2,7 +2,7 @@ name: Batch Sync Images to Alibaba Cloud ACR
 
 on:
   schedule:
-    # 每天 UTC 2:00 定时执行，可按需修改
+    # 每天 UTC 2:47 定时执行，可按需修改
     - cron: '47 2 * * *'
   workflow_dispatch:
     inputs:
@@ -13,28 +13,44 @@ on:
 
 env:
   ACR_REGION_DEFAULT: cn-hangzhou
+  CRANE_VERSION: v0.22.1
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: pip install pyyaml
+
+      - name: Install crane
+        run: |
+          set -euo pipefail
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin crane
+          chmod +x /usr/local/bin/crane
+          crane version
 
       - name: Run sync script
         env:
           REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
           REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
           REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }}
+
+          # 可选：源仓库凭据（拉私有源镜像时需要）
+          # SOURCE_REGISTRY: ghcr.io
           # SOURCE_REGISTRY_USER: ${{ secrets.SOURCE_REGISTRY_USER }}
           # SOURCE_REGISTRY_PASS: ${{ secrets.SOURCE_REGISTRY_PASS }}
+
+          # 打开详细输出，排查问题时方便
+          SYNC_DEBUG: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
           python scripts/sync_images.py "${{ inputs.config_file || 'images.yaml' }}"
