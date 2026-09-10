@@ -6,42 +6,60 @@ import subprocess
 import re
 import yaml
 
-def run(cmd: str, check: bool = False) -> subprocess.CompletedProcess:
-    """执行 shell 命令，可选择是否在失败时抛出异常。"""
+DEBUG = true
+
+def dlog(*args, **kwargs):
+    if DEBUG:
+        print("\033[35m[DEBUG]\033[0m", *args, **kwargs)
+
+def run(cmd: str, check: bool = False, debug: bool = True) -> subprocess.CompletedProcess:
     print(f"\033[36m[CMD]\033[0m {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if DEBUG and debug:
+        if result.stdout:
+            print("\033[35m[STDOUT]\033[0m")
+            print(result.stdout)
+        if result.stderr:
+            print("\033[35m[STDERR]\033[0m")
+            print(result.stderr)
+        print(f"\033[35m[EXIT]\033[0m {result.returncode}")
     if check and result.returncode != 0:
         raise RuntimeError(f"命令失败: {cmd}\n{result.stderr}")
     return result
 
-def get_digest(image: str, registry: str = "", user: str = "", password: str = "") -> str:
+def get_digest(image: str) -> str:
     """
-    获取远程镜像的 manifest digest（sha256:...）。
-    如果获取失败返回 None。
+    用 docker buildx imagetools inspect 拿 digest。
+    失败返回 None。
     """
-    # 如果提供了 registry 登录信息，先临时登录（可能影响全局状态，调用方需注意）
-    # 实际上为了不影响后续，我们可以在这里临时登录再 logout，但会增加复杂度。
-    # 这里改为由调用方确保已登录对应 registry。
     cmd = f"docker buildx imagetools inspect {image}"
     res = run(cmd)
     if res.returncode != 0:
-        # 尝试捕获常见错误，如未登录或不存在
-        print(f"error get digest: {image}\n{res.stderr}")
+        # 打印真实失败原因，区分“不存在”和“未授权/网络问题”
+        print(f"\033[33m[WARN]\033[0m imagetools inspect 失败: {image}")
+        print(f"        returncode={res.returncode}")
+        print(f"        stderr={res.stderr.strip()!r}")
         return None
+
+    dlog(f"inspect 输出 ({image}):")
+    for line in res.stdout.splitlines():
+        dlog(f"   | {line}")
+
     _backup = None
     for line in res.stdout.splitlines():
         if line.startswith('Digest:'):
-            return line.split('Digest:')[1].strip()
-        # 匹配如果有一个64位的16进制字符
+            d = line.split('Digest:', 1)[1].strip()
+            dlog(f"解析到 'Digest:' 行 -> {d}")
+            return d
         if _backup is None and line:
-            _match = re.search('[0-9a-f]{64}', line)
-            if _match:
-                _backup = _match.group()
-                print(f"匹配到: {_backup}")
+            m = re.search(r'\b[0-9a-f]{64}\b', line)
+            if m:
+                _backup = m.group()
+                dlog(f"备用匹配 -> {_backup}")
+    dlog(f"最终返回(digest={_backup})")
     return _backup
 
 def main(config_file: str):
-    # 读取 YAML 配置
     with open(config_file, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
     images = config.get('images', [])
@@ -54,34 +72,26 @@ def main(config_file: str):
     password = os.environ['REGISTRY_PASS']
     default_region = os.environ.get('ACR_REGION_DEFAULT', 'cn-hangzhou')
 
-    # 可选源仓库登录信息（仅当镜像源为私有仓库时配置）
     source_user = os.environ.get('SOURCE_REGISTRY_USER', '')
     source_pass = os.environ.get('SOURCE_REGISTRY_PASS', '')
 
-    # 当前已登录的 ACR region 记录
     logged_acr = ""
 
     def login_acr(region: str):
-        """登录到指定 region 的 ACR，避免重复登录。"""
         nonlocal logged_acr
         if logged_acr == region:
             return
         registry = f"registry.{region}.aliyuncs.com"
-        cmd = f"echo {password} | docker login --username {user} --password-stdin {registry}"
-        run(cmd, check=True)
+        run(f"echo {password} | docker login --username {user} --password-stdin {registry}",
+            check=True)
         logged_acr = region
 
-    # 先登录默认 ACR（方便后续 inspect 目标镜像）
     login_acr(default_region)
 
-    # 如果配置了源仓库凭据，尝试登录 Docker Hub 或 ghcr.io（仅一次）
     if source_user and source_pass:
-        # 简单起见，尝试同时登录 Docker Hub 和 GitHub Container Registry
-        # 实际可根据 source 的域名动态判断，这里做通用处理
-        if "ghcr.io" in source_user or os.environ.get('SOURCE_REGISTRY','').startswith('ghcr.io'):
+        if "ghcr.io" in source_user or os.environ.get('SOURCE_REGISTRY', '').startswith('ghcr.io'):
             run(f"echo {source_pass} | docker login ghcr.io --username {source_user} --password-stdin")
         else:
-            # Docker Hub
             run(f"echo {source_pass} | docker login --username {source_user} --password-stdin")
 
     success = 0
@@ -90,7 +100,7 @@ def main(config_file: str):
 
     for item in images:
         source = item['source']
-        target = item['target']          # 格式: 仓库名:标签，如 docker_hub:llama.cpp_server-cuda
+        target = item['target']
         region = item.get('region', default_region)
 
         if not source or not target:
@@ -99,46 +109,69 @@ def main(config_file: str):
 
         print(f"\n--- 处理 {source} -> {target} (区域: {region}) ---")
 
-        # 1) 获取源镜像 digest（需要该 registry 可访问）
+        # 1) 源 digest
         src_digest = get_digest(source)
+        if not src_digest and source_user and source_pass:
+            dlog("源 digest 为空，凭据已登录，重试一次")
+            src_digest = get_digest(source)
         if not src_digest:
-            # 可能是私有镜像或获取失败，尝试登录源仓库后再试一次（如果已配置）
-            if source_user and source_pass:
-                # 简单重试，登录已在前面完成
-                src_digest = get_digest(source)
-            if not src_digest:
-                print(f"\033[31m无法获取源镜像 digest: {source}\033[0m")
-                fail_list.append(source)
-                continue
+            print(f"\033[31m无法获取源镜像 digest: {source}\033[0m")
+            fail_list.append(source)
+            continue
 
-        # 2) 获取目标镜像 digest（需登录对应 ACR region）
-        login_acr(region)  # 确保登录状态
+        # 2) 目标 digest
+        login_acr(region)
         target_full = f"registry.{region}.aliyuncs.com/{namespace}/{target}"
         dst_digest = get_digest(target_full)
-        # 注意：目标镜像可能不存在，此时 dst_digest 为 None
+
+        # ==== 关键 debug：把两端 digest 明明白白打出来 ====
+        print(f"\033[35m[COMPARE]\033[0m")
+        print(f"    source       : {source}")
+        print(f"    source digest: {src_digest}")
+        print(f"    target       : {target_full}")
+        print(f"    target digest: {dst_digest}")
+        print(f"    equal        : {src_digest == dst_digest}")
+        # ================================================
 
         if dst_digest and dst_digest == src_digest:
             print(f"\033[32m镜像未变化，跳过同步: {source}\033[0m")
             skipped += 1
             continue
 
-        # 3) 确认需要同步：拉取源镜像
-        if not run(f"docker pull {source}").returncode == 0:
+        # 3) 拉取源镜像
+        r = run(f"docker pull {source}")
+        if r.returncode != 0:
+            print(f"\033[31m拉取失败: {source}\033[0m\n{r.stderr}")
             fail_list.append(source)
             continue
 
         # 4) 打标签并推送
-        if not run(f"docker tag {source} {target_full}").returncode == 0:
+        r = run(f"docker tag {source} {target_full}")
+        if r.returncode != 0:
+            print(f"\033[31m打标签失败: {source}\033[0m\n{r.stderr}")
             fail_list.append(source)
             continue
-        if not run(f"docker push {target_full}").returncode == 0:
+
+        r = run(f"docker push {target_full}")
+        if r.returncode != 0:
+            print(f"\033[31m推送失败: {target_full}\033[0m\n{r.stderr}")
             fail_list.append(source)
             continue
+
+        # ==== 推送后再 inspect 一次目标，验证 digest 是否与源一致 ====
+        if DEBUG:
+            pushed_digest = get_digest(target_full)
+            print(f"\033[35m[POST-PUSH]\033[0m target digest after push: {pushed_digest}")
+            if pushed_digest and pushed_digest != src_digest:
+                print(f"\033[33m[NOTE]\033[0m 推送后 digest 与源不一致 "
+                      f"(src={src_digest}, dst={pushed_digest})，"
+                      f"下次运行仍会重复同步！建议改用 "
+                      f"`docker buildx imagetools create --tag {target_full} {source}`")
+        # ============================================================
 
         print(f"\033[32m[OK] 同步成功: {source} -> {target_full}\033[0m")
         success += 1
 
-    # 清理登录状态
     run("docker logout", check=False)
 
     print(f"\n===== 同步报告 =====")
