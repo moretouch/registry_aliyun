@@ -6,7 +6,7 @@ import subprocess
 import re
 import yaml
 
-DEBUG = true
+DEBUG = True
 
 def dlog(*args, **kwargs):
     if DEBUG:
