@@ -1,6 +1,7 @@
 images:
   - source: ghcr.io/ggml-org/llama.cpp:server-cuda
     target: docker_hub:llama.cpp_server-cuda
+    platforms: linux/amd64
     # region: cn-hangzhou
 
   - source: kasmweb/nginx:1.26
@@ -8,6 +9,8 @@ images:
 
   - source: mattermost/mattermost-team-edition:release-11
     target: docker_hub:mattermost-team-edition
+    platforms: linux/amd64
 
   - source: unsloth/unsloth
     target: docker_hub:unsloth
+    platforms: linux/amd64
