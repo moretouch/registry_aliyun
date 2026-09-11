@@ -103,9 +103,14 @@ def get_platform_digests(image: str):
 
 
 def crane_copy(source: str, target: str, platforms: str, max_retries: int = 3) -> bool:
-    """用 crane copy 做 registry-to-registry 拷贝，带重试。"""
-    plat_arg = f"--platform {platforms}" if platforms else ""
-    cmd = f"crane copy {plat_arg} {source} {target}".strip()
+    """
+    用 crane copy 做 registry-to-registry 拷贝，带重试。
+    platforms 形如 'linux/amd64,linux/arm64'，会拆成多个 --platform 参数。
+    """
+    plat_parts = [p.strip() for p in platforms.split(',') if p.strip()]
+    plat_flags = ' '.join(f'--platform {p}' for p in plat_parts)
+    cmd = f"crane copy {plat_flags} {source} {target}".strip()
+
     for attempt in range(1, max_retries + 1):
         r = run(cmd)
         if r.returncode == 0:
